@@ -196,9 +196,25 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
 	const __m256 _nt = _mm256_set1_ps(nt / probSumT);
     const __m256 _mism = _mm256_set1_ps(C->ed_phs/C->ee_phs);
     __m256 _sum = _mm256_set1_ps(0.0f);
+#if UG_BITMATRIX
+	unsigned char* ptr = C->Hvar.getBytePtr(curr_rel_locus, 0); // cache row pointer
+	unsigned int byteAcc; // 8 bit byte accumulator
+#endif
 	for(int k = 0, i = 0 ; k != C->n_states ; ++k, i += HAP_NUMBER)
 	{
+#if UG_BITMATRIX
+		// on mod8==0, load accumulator
+		if ( !(k & 7) ) {
+			byteAcc = *ptr++;
+		}
+
+		// extract value from byte accumulator
+		const bool ah = byteAcc & 1;
+		byteAcc >>= 1;
+#else
 		const bool ah = C->Hvar.get(curr_rel_locus, k);
+#endif
+
 		const __m256 _prob_prev = _mm256_load_ps(&prob[i]);
 		__m256 _prob_curr = _mm256_fmadd_ps(_prob_prev, _nt, _tFreq);
 		if (ag!=ah) _prob_curr = _mm256_mul_ps(_prob_curr, _mism);

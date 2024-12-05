@@ -141,7 +141,42 @@ void conditioning_set::compactSelection(const int ind, const int iter)
 	Hvar.reallocate(polymorphic_sites.size(), n_states);
 	for (int labs = 0, lrel = 0, lcom = 0 ; labs < n_tot_sites ; labs ++) {
 		if (var_type[labs] == TYPE_COMMON) {
+#if UG_BITMATRIX
+			unsigned char* ptr = Hvar.getBytePtr(lrel, 0); // pointer to start of row
+			int byteAcc = 0; // the byte (8 values) accumulator
+			int size = idxHaps_ref.size(); // caches loop size
+			int size8 = size & ~7; // size up to last multiple of 8
+			int k = 0; // column index
+			// optimized loop
+			while ( k < size8 ) {
+				// build accumulator
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+				byteAcc <<= 1;
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+				byteAcc <<= 1;
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+				byteAcc <<= 1;
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+				byteAcc <<= 1;
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+				byteAcc <<= 1;
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+				byteAcc <<= 1;
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+				byteAcc <<= 1;
+				byteAcc |= H.HvarRef.get(lcom, idxHaps_ref[k++]);
+
+				// store and advance
+				*ptr++ = (unsigned char)byteAcc;
+				byteAcc = 0;
+			}
+			// reminder loop
+			for ( ; k < size ; k++ ) {
+				Hvar.set(lrel, k, H.HvarRef.get(lcom, idxHaps_ref[k]));
+			}
+#else
 			for (int k = 0 ; k < idxHaps_ref.size() ; k++) Hvar.set(lrel, k, H.HvarRef.get(lcom, idxHaps_ref[k]));
+#endif
 			lrel++;
 			lcom++;
 		} else if (var_type[labs] == TYPE_RARE) {

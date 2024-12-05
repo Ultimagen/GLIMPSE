@@ -33,6 +33,7 @@
 #include <boost/serialization/vector.hpp>
 #include <objects/genotype.h>
 
+#define UG_VECTOR_DATA 1
 
 haplotype_set::haplotype_set()
 {
@@ -622,8 +623,20 @@ void haplotype_set::init_common(const int k, const int l, const int prev_ref_rac
 	const std::vector<int>& small_idx = A_small_idx[l];
 	for (int htr=0; htr<small_idx.size(); ++htr) map_big_small[small_idx[htr]] = false;
 	int n_zeros = small_idx[0];
-	for (int htr=n_zeros+1; htr<n_ref_haps; ++htr)
-		if (map_big_small[htr]) pbwt_array_A[n_zeros++] = pbwt_array_A[htr];
+#if UG_VECTOR_DATA
+	auto&& pbwt_array_A_data = pbwt_array_A.data();
+#endif
+	for (int htr=n_zeros+1; htr<n_ref_haps; ++htr) {
+		if (map_big_small[htr]) {
+#if UG_VECTOR_DATA
+			pbwt_array_A_data[n_zeros++]
+				= pbwt_array_A_data[htr];
+#else
+			pbwt_array_A[n_zeros++]
+				= pbwt_array_A[htr];
+#endif
+		}
+	}
 
 	for (int htr=0; htr<pbwt_small_A.size(); ++htr,++n_zeros)
 		pbwt_array_A[n_zeros]=pbwt_small_A[htr];
