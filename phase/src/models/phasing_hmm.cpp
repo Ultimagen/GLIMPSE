@@ -31,9 +31,9 @@ phasing_hmm::phasing_hmm(conditioning_set * _C) :
 
 {
 	C = _C;
-	EMIT0 = std::vector<aligned_vector32<float> >(3, aligned_vector32<float> (HAP_NUMBER));
-	EMIT1 = std::vector<aligned_vector32<float> >(3, aligned_vector32<float> (HAP_NUMBER));
-	HProbs = aligned_vector32<float> (HAP_NUMBER*HAP_NUMBER);
+	EMIT0 = std::vector<avx_aligned_vector<float> >(3, avx_aligned_vector<float> (HAP_NUMBER));
+	EMIT1 = std::vector<avx_aligned_vector<float> >(3, avx_aligned_vector<float> (HAP_NUMBER));
+	HProbs = avx_aligned_vector<float> (HAP_NUMBER*HAP_NUMBER);
 
 	//INIT EMIT0
 	EMIT0[0][0] = C->ed_phs; EMIT0[1][0] = C->ed_phs; EMIT0[2][0] = C->ed_phs;
@@ -120,15 +120,15 @@ void phasing_hmm::reallocate(const std::vector < bool > & H0, const std::vector 
 	probSumH.resize(HAP_NUMBER);
 	probSumK.resize(C->n_states);
 
-	//phasingProb = std::vector < aligned_vector32 < float >  > (n_segs, aligned_vector32 < float >  (C->n_states * HAP_NUMBER, 0.0f));
+	//phasingProb = std::vector < avx_aligned_vector < float >  > (n_segs, avx_aligned_vector < float >  (C->n_states * HAP_NUMBER, 0.0f));
 	phasingProb.resize(n_segs*C->n_states * HAP_NUMBER);
-	//phasingProbSum = std::vector < aligned_vector32 < float >  > (n_segs, aligned_vector32 < float >  (HAP_NUMBER, 0.0f));
+	//phasingProbSum = std::vector < avx_aligned_vector < float >  > (n_segs, avx_aligned_vector < float >  (HAP_NUMBER, 0.0f));
 	phasingProbSum.resize(n_segs*HAP_NUMBER);
 	phasingProbSumSum.resize(n_segs);
 
-	//imputeProb = std::vector < aligned_vector32 < float >  > (n_miss, aligned_vector32 < float >  (C->n_states * HAP_NUMBER, 0.0f));
+	//imputeProb = std::vector < avx_aligned_vector < float >  > (n_miss, avx_aligned_vector < float >  (C->n_states * HAP_NUMBER, 0.0f));
 	imputeProb.resize(n_miss*C->n_states * HAP_NUMBER);
-	//imputeProbSum = std::vector < aligned_vector32 < float >  > (n_miss, aligned_vector32 < float >  (HAP_NUMBER, 0.0f));
+	//imputeProbSum = std::vector < avx_aligned_vector < float >  > (n_miss, avx_aligned_vector < float >  (HAP_NUMBER, 0.0f));
 	imputeProbSum.resize(n_miss * HAP_NUMBER);
 	imputeProbSumSum.resize(n_miss);
 	imputeProbOf1s.resize(n_miss * HAP_NUMBER);

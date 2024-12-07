@@ -73,8 +73,15 @@ extern "C" {
 #include <utils/verbose.h>
 
 //TYPEDEFS
+#define UG_AVX512 1
+
 template <typename T>
-using aligned_vector32 = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#if UG_AVX512
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 64 > >;
+#else
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#endif
+
 
 //CONSTANTS
 #define RARE_VARIANT_FREQ	0.001f

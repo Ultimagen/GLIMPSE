@@ -41,7 +41,7 @@ float horizontal_add (const __m256& a)
 imputation_hmm::imputation_hmm(conditioning_set * _C) {
 	C = _C;
 	modK=0;
-	Emissions = aligned_vector32 < float > (2*C->n_tot_sites);
+	Emissions = avx_aligned_vector < float > (2*C->n_tot_sites);
 }
 
 imputation_hmm::~imputation_hmm() {
