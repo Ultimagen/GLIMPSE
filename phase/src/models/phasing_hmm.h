@@ -215,7 +215,6 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
 
     __m512 _sum = _mm512_set1_ps(0.0f);
 
-
 	unsigned char* ptr = C->Hvar.getBytePtr(curr_rel_locus, 0); // cache row pointer
 	unsigned int byteAcc; // 8 bit byte accumulator
 	int size = C->n_states;
@@ -251,9 +250,33 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
 		_mm512_store_ps(&prob[i], _prob_curr);
 	}
 
-	// reminder loop (odd leftover - same as old code)
+	// fold sum back into 256 bits
+	__m256 _sum256 = _mm512_castps512_ps256(_sum);
+	__m256 _sum_high = _mm512_extractf32x8_ps(_sum, 1);
+	_sum256 = _mm256_add_ps(_sum256, _sum_high);
 
+	// reminder loop (should be exactly 1 iteration or none)
+	if ( k != size ) {
+		assert((k+1) == size);
+		const __m256 _tFreq = _mm256_mul_ps(_mm256_load_ps(&probSumH[0]), _mm256_set1_ps(yt / (C->n_states * probSumT)));
+		const __m256 _nt = _mm256_set1_ps(nt / probSumT);
+    	const __m256 _mism = _mm256_set1_ps(C->ed_phs/C->ee_phs);
 
+		// extract value from byte accumulator
+		const bool ah = byteAcc & 1;
+		byteAcc >>= 1;
+
+		const __m256 _prob_prev = _mm256_load_ps(&prob[i]);
+		__m256 _prob_curr = _mm256_fmadd_ps(_prob_prev, _nt, _tFreq);
+		if (ag!=ah) {
+			_prob_curr = _mm256_mul_ps(_prob_curr, _mism);
+		}
+		_sum256 = _mm256_add_ps(_sum256, _prob_curr);
+		_mm256_store_ps(&prob[i], _prob_curr);
+	}
+
+	_mm256_store_ps(&probSumH[0], _sum256);
+	probSumT = horizontal_add(_sum256);
 
 #else
 	const __m256 _tFreq = _mm256_mul_ps(_mm256_load_ps(&probSumH[0]), _mm256_set1_ps(yt / (C->n_states * probSumT)));
