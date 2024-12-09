@@ -30,8 +30,7 @@
 #include <containers/conditioning_set.h>
 #include <immintrin.h>
 #include <boost/align/aligned_allocator.hpp>
-
-#define UG_AVX512 1
+#include <utils/ug.h>
 
 template <typename T>
 #if UG_AVX512

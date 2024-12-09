@@ -71,10 +71,14 @@ extern "C" {
 #include <utils/string_utils.h>
 #include <utils/timer.h>
 #include <utils/verbose.h>
+#include <utils/ug.h>
+
+// required UG settings
+#ifndef UG_AVX512
+#error UG_AVX512 must be defined
+#endif
 
 //TYPEDEFS
-#define UG_AVX512 1
-
 template <typename T>
 #if UG_AVX512
 using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 64 > >;

@@ -31,8 +31,12 @@
 #include <utils/checksum_utils.h>
 #include "boost/serialization/serialization.hpp"
 #include "boost/serialization/array.hpp"
+#include <utils/ug.h>
 
-#define UG_BITMATRIX 1
+// required UG settings
+#ifndef UG_BITMATRIX
+#error UG_BITMATRIX must be defined
+#endif
 
 inline static unsigned int abracadabra(const unsigned int &i1, const unsigned int &i2) {
 	return static_cast<unsigned int>((static_cast<unsigned long int>(i1) * static_cast<unsigned long int>(i2)) >> 32);

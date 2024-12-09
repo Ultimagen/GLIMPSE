@@ -32,8 +32,7 @@
 #include <boost/serialization/base_object.hpp>
 #include <boost/serialization/vector.hpp>
 #include <objects/genotype.h>
-
-#define UG_VECTOR_DATA 1
+#include <utils/ug.h>
 
 haplotype_set::haplotype_set()
 {

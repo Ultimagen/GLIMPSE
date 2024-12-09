@@ -30,8 +30,7 @@
 #include <containers/conditioning_set.h>
 #include <immintrin.h>
 #include <boost/align/aligned_allocator.hpp>
-
-#define UG_AVX512 1
+#include <utils/ug.h>
 
 template <typename T>
 #if UG_AVX512
@@ -200,17 +199,17 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
 {
 #if UG_AVX512
 	assert(UG_BITMATRIX);
-	const __m256 _tFreq128 = _mm256_mul_ps(_mm256_load_ps(&probSumH[0]), _mm256_set1_ps(yt / (C->n_states * probSumT)));
+	const __m256 _tFreq256= _mm256_mul_ps(_mm256_load_ps(&probSumH[0]), _mm256_set1_ps(yt / (C->n_states * probSumT)));
 	__m512 _tFreq = _mm512_set1_ps(0.0f);					// broadcast 0,1,2,3,4,5,6,7 -> 8,9,10,11,12,13,14,15
-	_tFreq = _mm512_insertf32x8(_tFreq, _tFreq128, 0);
-	_tFreq = _mm512_insertf32x8(_tFreq, _tFreq128, 1);
+	_tFreq = _mm512_insertf32x8(_tFreq, _tFreq256, 0);
+	_tFreq = _mm512_insertf32x8(_tFreq, _tFreq256, 1);
 	const __m512 _nt = _mm512_set1_ps(nt / probSumT);
 
     const __m256 _mism256 = _mm256_set1_ps(C->ed_phs/C->ee_phs);
     const __m512 _mism = _mm512_set1_ps(C->ed_phs/C->ee_phs);
-	__m512 _mismX1 = _mm512_set1_ps(0.0f);
+	__m512 _mismX1 = _mm512_set1_ps(1.0f);
 	_mismX1 = _mm512_insertf32x8(_mismX1, _mism256, 0);
-	__m512 _mism1X = _mm512_set1_ps(0.0f);
+	__m512 _mism1X = _mm512_set1_ps(1.0f);
 	_mism1X = _mm512_insertf32x8(_mism1X, _mism256, 1);
 
     __m512 _sum = _mm512_set1_ps(0.0f);
@@ -230,10 +229,9 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
 		}
 
 		// extract 2 values value from byte accumulator
-		const bool ah0 = byteAcc & 1;
-		byteAcc >>= 1;
-		const bool ah1 = byteAcc & 1;
-		byteAcc >>= 1;
+		const bool ah0 = byteAcc & 0x80;
+		const bool ah1 = byteAcc & 0x40;
+		byteAcc <<= 2;
 
 		const __m512 _prob_prev = _mm512_load_ps(&prob[i]);
 		__m512 _prob_curr = _mm512_fmadd_ps(_prob_prev, _nt, _tFreq);
@@ -242,7 +240,7 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
 				_prob_curr = _mm512_mul_ps(_prob_curr, _mism);
 		} else if ( ag != ah0 ) {
 			_prob_curr = _mm512_mul_ps(_prob_curr, _mismX1);
-		} else if ( ag != ah1 ) {
+		} else {
 			_prob_curr = _mm512_mul_ps(_prob_curr, _mism1X);
 		}
 
@@ -263,8 +261,10 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
     	const __m256 _mism = _mm256_set1_ps(C->ed_phs/C->ee_phs);
 
 		// extract value from byte accumulator
-		const bool ah = byteAcc & 1;
-		byteAcc >>= 1;
+		if ( !(k & 7) ) {
+			byteAcc = *ptr++;
+		}
+		const bool ah = byteAcc & 0x80;
 
 		const __m256 _prob_prev = _mm256_load_ps(&prob[i]);
 		__m256 _prob_curr = _mm256_fmadd_ps(_prob_prev, _nt, _tFreq);
@@ -297,8 +297,8 @@ void phasing_hmm::RUN_PEAK_HOM(bool ag)
 		}
 
 		// extract value from byte accumulator
-		const bool ah = byteAcc & 1;
-		byteAcc >>= 1;
+		const bool ah = byteAcc & 0x80;
+		byteAcc <<= 1;
 #else
 		const bool ah = C->Hvar.get(curr_rel_locus, k);
 #endif
