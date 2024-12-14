@@ -1,5 +1,5 @@
-#projects = chunk concordance ligate phase split_reference
-projects = phase
+projects = chunk concordance ligate phase split_reference
+#projects = phase
 
 .PHONY: all $(projects)
 
