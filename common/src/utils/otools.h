@@ -71,10 +71,21 @@ extern "C" {
 #include <utils/string_utils.h>
 #include <utils/timer.h>
 #include <utils/verbose.h>
+#include <utils/ug.h>
+
+// required UG settings
+#ifndef UG_AVX512
+#error UG_AVX512 must be defined
+#endif
 
 //TYPEDEFS
 template <typename T>
-using aligned_vector32 = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#if UG_AVX512
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 64 > >;
+#else
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#endif
+
 
 //CONSTANTS
 #define RARE_VARIANT_FREQ	0.001f

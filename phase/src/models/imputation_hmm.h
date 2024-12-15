@@ -30,9 +30,15 @@
 #include <containers/conditioning_set.h>
 #include <immintrin.h>
 #include <boost/align/aligned_allocator.hpp>
+#include <utils/ug.h>
 
 template <typename T>
-using aligned_vector32 = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#if UG_AVX512
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 64 > >;
+#else
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#endif
+
 
 class imputation_hmm {
 private:
@@ -40,10 +46,10 @@ private:
 	unsigned int modK;
 
 	//DYNAMIC ARRAYS
-	aligned_vector32 < float > Emissions;
-	aligned_vector32 < float > Alpha;
-	aligned_vector32 < float > AlphaSum;
-	aligned_vector32 < float > Beta;
+	avx_aligned_vector < float > Emissions;
+	avx_aligned_vector < float > Alpha;
+	avx_aligned_vector < float > AlphaSum;
+	avx_aligned_vector < float > Beta;
 
 public:
 	//CONSTRUCTOR/DESTRUCTOR

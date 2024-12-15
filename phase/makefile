@@ -7,7 +7,7 @@ dummy_build_folder_bin := $(shell mkdir -p bin)
 dummy_build_folder_obj := $(shell mkdir -p obj)
 
 #COMPILER & LINKER FLAGS
-CXXFLAG=-O3 -Wno-ignored-attributes
+CXXFLAG=-O3 -g -Wno-ignored-attributes
 LDFLAG=-O3
 
 #CXXFLAG=-O0 -g -Wno-ignored-attributes
@@ -31,7 +31,7 @@ EXEFILE=bin/GLIMPSE2_$(NAME)_static
 #CXXFLAG+= -D__COMMIT_DATE__=\"$(COMMIT_DATE)\"
 
 ifeq ($(NAME),phase)
- CXXFLAG+=-mavx2 -mfma
+ CXXFLAG+=-mavx2 -mfma -mavx512f -march=native
 endif
 
 COMMIT_VERS=3bed6d9

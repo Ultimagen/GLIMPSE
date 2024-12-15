@@ -30,9 +30,14 @@
 #include <containers/conditioning_set.h>
 #include <immintrin.h>
 #include <boost/align/aligned_allocator.hpp>
+#include <utils/ug.h>
 
 template <typename T>
-using aligned_vector32 = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#if UG_AVX512
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 64 > >;
+#else
+using avx_aligned_vector = std::vector<T, boost::alignment::aligned_allocator < T, 32 > >;
+#endif
 
 #define HAP_NUMBER 8
 
@@ -83,25 +88,25 @@ private:
 
 	//DYNAMIC ARRAYS
 	float probSumT;
-	aligned_vector32 < float > prob;
-	aligned_vector32 < float > probSumK;
-	aligned_vector32 < float > probSumH;
+	avx_aligned_vector < float > prob;
+	avx_aligned_vector < float > probSumK;
+	avx_aligned_vector < float > probSumH;
 
-	aligned_vector32 < float > phasingProb;
-	aligned_vector32 < float > phasingProbSum;
+	avx_aligned_vector < float > phasingProb;
+	avx_aligned_vector < float > phasingProbSum;
 	std::vector < float > phasingProbSumSum;
 
-	aligned_vector32 < float > imputeProb;
-	aligned_vector32 < float > imputeProbSum;
-	aligned_vector32 < float > imputeProbSumSum;
-	aligned_vector32 < float > imputeProbOf1s;
+	avx_aligned_vector < float > imputeProb;
+	avx_aligned_vector < float > imputeProbSum;
+	avx_aligned_vector < float > imputeProbSumSum;
+	avx_aligned_vector < float > imputeProbOf1s;
 	std::vector < int > dip_sampled;
 
 	//STATIC ARRAYS
 	std::vector < float > DProbs;
-	std::vector<aligned_vector32<float> > EMIT0;
-	std::vector<aligned_vector32<float> > EMIT1;
-	aligned_vector32 < float > HProbs;
+	std::vector<avx_aligned_vector<float> > EMIT0;
+	std::vector<avx_aligned_vector<float> > EMIT1;
+	avx_aligned_vector < float > HProbs;
 	float sumHProbs, sumDProbs;
 	float nt, yt;
 
@@ -192,21 +197,123 @@ void phasing_hmm::RUN_PEAK_HET(int curr_het)
 inline
 void phasing_hmm::RUN_PEAK_HOM(bool ag)
 {
+#if UG_AVX512
+	assert(UG_BITMATRIX);
+	const __m256 _tFreq256= _mm256_mul_ps(_mm256_load_ps(&probSumH[0]), _mm256_set1_ps(yt / (C->n_states * probSumT)));
+	__m512 _tFreq = _mm512_set1_ps(0.0f);					// broadcast 0,1,2,3,4,5,6,7 -> 8,9,10,11,12,13,14,15
+	_tFreq = _mm512_insertf32x8(_tFreq, _tFreq256, 0);
+	_tFreq = _mm512_insertf32x8(_tFreq, _tFreq256, 1);
+	const __m512 _nt = _mm512_set1_ps(nt / probSumT);
+
+    const __m256 _mism256 = _mm256_set1_ps(C->ed_phs/C->ee_phs);
+    const __m512 _mism = _mm512_set1_ps(C->ed_phs/C->ee_phs);
+	__m512 _mismX1 = _mm512_set1_ps(1.0f);
+	_mismX1 = _mm512_insertf32x8(_mismX1, _mism256, 0);
+	__m512 _mism1X = _mm512_set1_ps(1.0f);
+	_mism1X = _mm512_insertf32x8(_mism1X, _mism256, 1);
+
+    __m512 _sum = _mm512_set1_ps(0.0f);
+
+	unsigned char* ptr = C->Hvar.getBytePtr(curr_rel_locus, 0); // cache row pointer
+	unsigned int byteAcc; // 8 bit byte accumulator
+	int size = C->n_states;
+	int size2 = size & ~1; // size up to last even number
+
+	// 2-state (16 floats) loop
+	int k, i;
+	for(k = 0, i = 0 ; k != size2 ; k += 2, i += (2 * HAP_NUMBER))
+	{
+		// on mod8==0, load accumulator
+		if ( !(k & 7) ) {
+			byteAcc = *ptr++;
+		}
+
+		// extract 2 values value from byte accumulator
+		const bool ah0 = byteAcc & 0x80;
+		const bool ah1 = byteAcc & 0x40;
+		byteAcc <<= 2;
+
+		const __m512 _prob_prev = _mm512_load_ps(&prob[i]);
+		__m512 _prob_curr = _mm512_fmadd_ps(_prob_prev, _nt, _tFreq);
+		if ( ah0 == ah1 ) {
+			if ( ag != ah0 )
+				_prob_curr = _mm512_mul_ps(_prob_curr, _mism);
+		} else if ( ag != ah0 ) {
+			_prob_curr = _mm512_mul_ps(_prob_curr, _mismX1);
+		} else {
+			_prob_curr = _mm512_mul_ps(_prob_curr, _mism1X);
+		}
+
+		_sum = _mm512_add_ps(_sum, _prob_curr);
+		_mm512_store_ps(&prob[i], _prob_curr);
+	}
+
+	// fold sum back into 256 bits
+	__m256 _sum256 = _mm512_castps512_ps256(_sum);
+	__m256 _sum_high = _mm512_extractf32x8_ps(_sum, 1);
+	_sum256 = _mm256_add_ps(_sum256, _sum_high);
+
+	// reminder loop (should be exactly 1 iteration or none)
+	if ( k != size ) {
+		assert((k+1) == size);
+		const __m256 _tFreq = _mm256_mul_ps(_mm256_load_ps(&probSumH[0]), _mm256_set1_ps(yt / (C->n_states * probSumT)));
+		const __m256 _nt = _mm256_set1_ps(nt / probSumT);
+    	const __m256 _mism = _mm256_set1_ps(C->ed_phs/C->ee_phs);
+
+		// extract value from byte accumulator
+		if ( !(k & 7) ) {
+			byteAcc = *ptr++;
+		}
+		const bool ah = byteAcc & 0x80;
+
+		const __m256 _prob_prev = _mm256_load_ps(&prob[i]);
+		__m256 _prob_curr = _mm256_fmadd_ps(_prob_prev, _nt, _tFreq);
+		if (ag!=ah) {
+			_prob_curr = _mm256_mul_ps(_prob_curr, _mism);
+		}
+		_sum256 = _mm256_add_ps(_sum256, _prob_curr);
+		_mm256_store_ps(&prob[i], _prob_curr);
+	}
+
+	_mm256_store_ps(&probSumH[0], _sum256);
+	probSumT = horizontal_add(_sum256);
+
+#else
 	const __m256 _tFreq = _mm256_mul_ps(_mm256_load_ps(&probSumH[0]), _mm256_set1_ps(yt / (C->n_states * probSumT)));
 	const __m256 _nt = _mm256_set1_ps(nt / probSumT);
     const __m256 _mism = _mm256_set1_ps(C->ed_phs/C->ee_phs);
     __m256 _sum = _mm256_set1_ps(0.0f);
-	for(int k = 0, i = 0 ; k != C->n_states ; ++k, i += HAP_NUMBER)
+#if UG_BITMATRIX
+	unsigned char* ptr = C->Hvar.getBytePtr(curr_rel_locus, 0); // cache row pointer
+	unsigned int byteAcc; // 8 bit byte accumulator
+#endif
+	int size = C->n_states;
+	for(int k = 0, i = 0 ; k != size ; ++k, i += HAP_NUMBER)
 	{
+#if UG_BITMATRIX
+		// on mod8==0, load accumulator
+		if ( !(k & 7) ) {
+			byteAcc = *ptr++;
+		}
+
+		// extract value from byte accumulator
+		const bool ah = byteAcc & 0x80;
+		byteAcc <<= 1;
+#else
 		const bool ah = C->Hvar.get(curr_rel_locus, k);
+#endif
+
 		const __m256 _prob_prev = _mm256_load_ps(&prob[i]);
 		__m256 _prob_curr = _mm256_fmadd_ps(_prob_prev, _nt, _tFreq);
-		if (ag!=ah) _prob_curr = _mm256_mul_ps(_prob_curr, _mism);
+		if (ag!=ah) {
+			_prob_curr = _mm256_mul_ps(_prob_curr, _mism);
+		}
 		_sum = _mm256_add_ps(_sum, _prob_curr);
 		_mm256_store_ps(&prob[i], _prob_curr);
 	}
 	_mm256_store_ps(&probSumH[0], _sum);
 	probSumT = horizontal_add(_sum);
+#endif
 }
 
 inline

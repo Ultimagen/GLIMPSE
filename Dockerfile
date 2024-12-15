@@ -32,7 +32,7 @@ cd htslib-1.16 && \
 autoheader && \
 autoconf && \
 ./configure --enable-libcurl && \
-make install && \
+make -j install && \
 cd .. && \
 rm -r htslib-1.16
 
@@ -46,12 +46,19 @@ COPY split_reference GLIMPSE/split_reference/
 COPY versions GLIMPSE/versions/
 COPY makefile GLIMPSE/makefile
 
+# remove editing leftovers
+RUN find GLIMPSE -name ".*.cpp" -delete
+
 # Download and build GLIMPSE
 RUN cd GLIMPSE && \
 make clean && \
-make COMPILATION_ENV=docker
+make -j COMPILATION_ENV=docker
 
-RUN mv GLIMPSE/chunk/bin/GLIMPSE2_chunk GLIMPSE/split_reference/bin/GLIMPSE2_split_reference GLIMPSE/phase/bin/GLIMPSE2_phase GLIMPSE/ligate/bin/GLIMPSE2_ligate GLIMPSE/concordance/bin/GLIMPSE2_concordance /bin && \
+#RUN mv GLIMPSE/chunk/bin/GLIMPSE2_chunk GLIMPSE/split_reference/bin/GLIMPSE2_split_reference GLIMPSE/phase/bin/GLIMPSE2_phase GLIMPSE/ligate/bin/GLIMPSE2_ligate GLIMPSE/concordance/bin/GLIMPSE2_concordance /bin && \
+#chmod +x /bin/GLIMPSE2* && \
+#rm -rf GLIMPSE
+
+RUN mv GLIMPSE/phase/bin/GLIMPSE2_phase /bin && \
 chmod +x /bin/GLIMPSE2* && \
 rm -rf GLIMPSE
 
