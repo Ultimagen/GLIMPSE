@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:20.04 as base
 
 LABEL org.opencontainers.image.created="2022-11-30"
 LABEL org.opencontainers.image.url="https://github.com/odelaneau/GLIMPSE"
@@ -36,6 +36,8 @@ make -j install && \
 cd .. && \
 rm -r htslib-1.16
 
+FROM base AS build
+
 # Have to copy each subdirectory individually because the COPY command copies the contents, not the directories
 COPY chunk GLIMPSE/chunk/
 COPY common GLIMPSE/common/
@@ -47,19 +49,21 @@ COPY versions GLIMPSE/versions/
 COPY makefile GLIMPSE/makefile
 
 # remove editing leftovers
-RUN find GLIMPSE -name ".*.cpp" -delete
+# RUN find GLIMPSE -name ".*.cpp" -delete
 
 # Download and build GLIMPSE
 RUN cd GLIMPSE && \
 make clean && \
 make -j COMPILATION_ENV=docker
 
-#RUN mv GLIMPSE/chunk/bin/GLIMPSE2_chunk GLIMPSE/split_reference/bin/GLIMPSE2_split_reference GLIMPSE/phase/bin/GLIMPSE2_phase GLIMPSE/ligate/bin/GLIMPSE2_ligate GLIMPSE/concordance/bin/GLIMPSE2_concordance /bin && \
-#chmod +x /bin/GLIMPSE2* && \
-#rm -rf GLIMPSE
-
-RUN mv GLIMPSE/phase/bin/GLIMPSE2_phase /bin && \
+RUN mv GLIMPSE/chunk/bin/GLIMPSE2_chunk GLIMPSE/split_reference/bin/GLIMPSE2_split_reference GLIMPSE/phase/bin/GLIMPSE2_phase GLIMPSE/ligate/bin/GLIMPSE2_ligate GLIMPSE/concordance/bin/GLIMPSE2_concordance /bin && \
 chmod +x /bin/GLIMPSE2* && \
 rm -rf GLIMPSE
 
+# RUN mv GLIMPSE/phase/bin/GLIMPSE2_phase /bin && \
+# chmod +x /bin/GLIMPSE2* && \
+# rm -rf GLIMPSE
+
 WORKDIR /
+
+# FROM base AS dev
