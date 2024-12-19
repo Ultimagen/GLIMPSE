@@ -13,7 +13,7 @@ fi
 CHR=$1
 
 BCFTOOLS="docker run -u $(id -u):$(id -g) --rm -v /data:/data staphb/bcftools"
-BIN="docker run -u $(id -u):$(id -g) --rm -v /data:/data glimpse2-dev /bin/"
+BIN="docker run -u $(id -u):$(id -g) --rm -v /data:/data glimpse2-dev"
 
 PANEL_NAME=CCDG_14151_B01_GRM_WGS_2020-08-05_${CHR}.filtered.shapeit2-duohmm-phased.vcf.gz
 PANEL_SITE=http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20201028_3202_phased
@@ -63,7 +63,7 @@ fi
 
 if [ ! -f $CHUNKS ]; then
  echo "Split the genome into chunks ... $SITES_PANEL -> $CHUNKS"
- $BIN/GLIMPSE2_chunk \
+ $BIN GLIMPSE2_chunk \
     --input $SITES_PANEL \
     --region $CHR \
     --output $CHUNKS \
@@ -79,7 +79,7 @@ if true; then
   IRG=$(echo $LINE | cut -d" " -f3)
   ORG=$(echo $LINE | cut -d" " -f4)
 
-  $BIN/GLIMPSE2_split_reference \
+  $BIN GLIMPSE2_split_reference \
   	--reference $PREP_PANEL \
   	--map $MAP \
   	--input-region ${IRG} \
