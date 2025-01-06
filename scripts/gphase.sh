@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -x
+set -euo pipefail
+
 if [ $# -ne 2 ]
   then
     echo "usage: $0 <chr> <input>"
@@ -9,11 +12,18 @@ fi
 
 CHR=$1
 INPUT_BAM=$2
-BIN="sudo docker run --rm -v .:/data -v ~/data/ug_bam/input/n1:/input glimpse2-dev /bin/"
+BIN="docker run -u $(id -u):$(id -g) --rm -v /data:/data glimpse2-dev"
+
 DATA=/data
-INPUT=/input
-SPLIT_REF=reference_panel/split/1000GP
-CHUNKS=chunks/${CHR}.txt
+
+PREFIX=/data/Runs
+
+PANEL_PREFIX=$PREFIX/reference_panel
+SPLIT_REF=$PANEL_PREFIX/split/1000GP
+CHUNKS=$PREFIX/chunks/${CHR}.txt
+OUTPUT=$PREFIX/output
+
+mkdir -p $OUTPUT
 
 
 while IFS="" read -r LINE || [ -n "$LINE" ]; 
@@ -24,11 +34,10 @@ while IFS="" read -r LINE || [ -n "$LINE" ];
     CHR=$(echo ${LINE} | cut -d" " -f2)
     REGS=$(echo ${IRG} | cut -d":" -f 2 | cut -d"-" -f1)
     REGE=$(echo ${IRG} | cut -d":" -f 2 | cut -d"-" -f2)
-    OUT=impute/imputed
 
-    echo $BIN/GLIMPSE2_phase \
-     --bam-file $INPUT/${INPUT_BAM} \
-     --reference $DATA/${SPLIT_REF}_${CHR}_${REGS}_${REGE}.bin \
-     --output $DATA/${OUT}_${CHR}_${REGS}_${REGE}.bcf 
+    $BIN GLIMPSE2_phase \
+     --bam-file ${INPUT_BAM} \
+     --reference ${SPLIT_REF}_${CHR}_${REGS}_${REGE}.bin \
+     --output ${OUTPUT}/${CHR}_${REGS}_${REGE}.bcf 
  done < ${CHUNKS}
 
