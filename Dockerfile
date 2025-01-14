@@ -45,6 +45,7 @@ COPY phase GLIMPSE/phase/
 COPY split_reference GLIMPSE/split_reference/
 COPY versions GLIMPSE/versions/
 COPY makefile GLIMPSE/makefile
+COPY maps /usr/share/glimpse/maps/
 
 # remove editing leftovers
 RUN find GLIMPSE -name ".*.cpp" -delete
