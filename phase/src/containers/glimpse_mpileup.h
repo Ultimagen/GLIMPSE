@@ -63,6 +63,12 @@ struct aux_t {     			// auxiliary data structure
 	bool keep_orphan,check_orientation,check_proper_pair;	// parameters for filtering
 	int fflag;												// Filter flag
 	//unsigned int mtlen;										// Maximum observed fragment length
+	
+	// new fields used for multi-read
+	bool reached_eof;
+	bam1_t b; // last read record
+	int b_ret; // last return value when b was read
+	int aux_id;
 };
 
 struct glimpse_bam_mplp_iter {

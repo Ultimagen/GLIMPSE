@@ -31,6 +31,9 @@
 #include <containers/haplotype_set.h>
 #include <containers/glimpse_mpileup.h>
 
+#include <iostream>
+#include <sstream>
+
 namespace calling_utils
 {
 	//equivalent to: for (int i=0; i<256; i++) unphred[i] = pow(10., -i/10.);//element zero is set to one.
@@ -63,7 +66,7 @@ public:
 	const uint32_t beg;
 	const uint32_t end;
 
-	aux_t aux_data;
+	std::vector<aux_t> aux_datas;
 
 	//for the call
 	//stats_cov stats;
@@ -81,6 +84,8 @@ public:
 	void clean();
 	void reset_results(int i);
 	int glimpse_mpileup_reg(int i);
+	void init_aux_data(aux_t& aux_data);
+
 };
 
 #endif

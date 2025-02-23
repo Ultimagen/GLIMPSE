@@ -27,9 +27,9 @@
 #include <thread>
 #include <chrono>
 
-static int read_bam(void *data, bam1_t *b)
-{
-	aux_t * aux = (aux_t*) data;
+static int read_count = 0;
+
+static int read_single_bam(aux_t * aux, bam1_t *b) {
 	int ret, skip = 0;
 	do{
 		ret =  (aux->iter? sam_itr_next(aux->fp, aux->iter, b) : sam_read1(aux->fp, aux->hdr, b));
@@ -58,6 +58,64 @@ static int read_bam(void *data, bam1_t *b)
 		skip = 0;
 	} while(skip);
 	return ret;
+}
+
+static bool is_earlier(bam1_t& b1, bam1_t& b2) {
+	// we assume that this will never be used for regions that span chromosomes
+	// this is "enforced" by the chunking process
+	return b1.core.pos < b2.core.pos;
+}
+
+static int read_bam(void *data, bam1_t *b)
+{
+	read_count++;
+	std::vector<aux_t>* auxs = (std::vector<aux_t>*)data;
+
+
+	// only 1? simple case
+	if ( (*auxs).size() == 1 ) {
+		return read_single_bam(&(*auxs)[0], b);
+	}
+
+	// load a read from each aux, registering the source of the earliest read
+	int earliest = -1;
+	for ( auto&& aux : *auxs ) {
+
+		// already done with this aux
+		if ( aux.reached_eof ) {
+			continue;
+		}
+
+		// get next read
+		if ( aux.b.data == nullptr ) {
+			aux.b_ret = read_single_bam(&aux, &aux.b);
+			if ( aux.b_ret < 0 ) {
+				aux.reached_eof = true;
+				continue;
+			}
+		}
+
+		// no earliest yet?
+		if ( earliest < 0 ) {
+			earliest = aux.aux_id;
+			continue;
+		}
+
+		// is this a new earliest?
+		if ( is_earlier(aux.b, (*auxs)[earliest].b) ) {
+			earliest = aux.aux_id;
+		}
+	}
+
+	// no earliest, nothing to return
+	if ( earliest < 0 ) {
+		return -1;
+	}
+
+	// return the earliest
+	*b = (*auxs)[earliest].b;
+	bzero(&(*auxs)[earliest].b, sizeof((*auxs)[earliest].b));
+	return (*auxs)[earliest].b_ret;
 }
 
 genotype_bam_caller::genotype_bam_caller(
@@ -105,6 +163,10 @@ genotype_bam_caller::genotype_bam_caller(
 	*/
 	else vrb.error("Model used is not supported: [" + _callmodel + "]");
 
+}
+
+void genotype_bam_caller::init_aux_data(aux_t& aux_data) {
+
 	aux_data.check_orientation = mpileup_data.check_orientation;
 	aux_data.check_proper_pair = mpileup_data.check_proper_pair;
 	aux_data.fflag = mpileup_data.fflag;
@@ -116,18 +178,27 @@ genotype_bam_caller::genotype_bam_caller(
 	aux_data.idx=nullptr;
 	aux_data.hdr=nullptr;
 	aux_data.fp=nullptr;
+
+	aux_data.reached_eof = false;
+	bzero(&aux_data.b, sizeof(aux_data.b));
+
 }
 
 void genotype_bam_caller::clean()
 {
-	if ( aux_data.iter) hts_itr_destroy(aux_data.iter);
-	aux_data.iter=nullptr;
-	if (aux_data.idx) hts_idx_destroy(aux_data.idx);
-	aux_data.idx=nullptr;
-	if (aux_data.hdr) bam_hdr_destroy(aux_data.hdr);
-	aux_data.hdr=nullptr;
-	if (aux_data.fp)sam_close(aux_data.fp);
-	aux_data.fp=nullptr;
+	for ( aux_t& aux_data : aux_datas ) {
+		if ( aux_data.iter) hts_itr_destroy(aux_data.iter);
+		aux_data.iter=nullptr;
+		if (aux_data.idx) hts_idx_destroy(aux_data.idx);
+		aux_data.idx=nullptr;
+		if (aux_data.hdr) bam_hdr_destroy(aux_data.hdr);
+		aux_data.hdr=nullptr;
+		if (aux_data.fp)sam_close(aux_data.fp);
+		aux_data.fp=nullptr;
+		aux_data.reached_eof = false;
+		bzero(&aux_data.b, sizeof(aux_data.b));
+
+	}
 
 	caller.gls.read_depth = 0;
 	caller.gls.dp_ind = 0;
@@ -147,78 +218,93 @@ void genotype_bam_caller::reset_results(int i)
 
 genotype_bam_caller::~genotype_bam_caller()
 {
-	if ( aux_data.iter) hts_itr_destroy(aux_data.iter);
-	aux_data.iter=nullptr;
-	if (aux_data.idx) hts_idx_destroy(aux_data.idx);
-	aux_data.idx=nullptr;
-	if (aux_data.hdr) bam_hdr_destroy(aux_data.hdr);
-	aux_data.hdr=nullptr;
-	if (aux_data.fp)sam_close(aux_data.fp);
-	aux_data.fp=nullptr;
+	for ( auto&& aux_data : aux_datas ) {
+		if ( aux_data.iter) hts_itr_destroy(aux_data.iter);
+		aux_data.iter=nullptr;
+		if (aux_data.idx) hts_idx_destroy(aux_data.idx);
+		aux_data.idx=nullptr;
+		if (aux_data.hdr) bam_hdr_destroy(aux_data.hdr);
+		aux_data.hdr=nullptr;
+		if (aux_data.fp)sam_close(aux_data.fp);
+		aux_data.fp=nullptr;
+	}
 }
 
 void genotype_bam_caller::call_mpileup(int i)
 {
 	
+	std::vector<std::string> fnames;
+	int fname_count = stb.split(mpileup_data.bam_fnames[i], fnames, ";");
+	for ( int aux_id = 0 ; aux_id < fnames.size() ; aux_id++ ) {
+		aux_t& aux_data = aux_datas.emplace_back();
+		init_aux_data(aux_data);
+		aux_data.aux_id = aux_id;
+	}
 
 	//Retries are not implemented in hfile_libcurl, which ends up being used if streaming from cloud location.  So implementing here. 
 	const int n_retry = 3;
 	int n_retry_remain = n_retry;
 	std::chrono::seconds delay(1);
-	for (; n_retry_remain > 0;n_retry_remain--, delay*=2) {
-		if (n_retry_remain != n_retry) {
-			std::this_thread::sleep_for(delay);
-			clean();
-		}
-		caller.ploidy = mpileup_data.tar_ploidy[i];
 
-		aux_data.fp = sam_open(mpileup_data.bam_fnames[i].c_str(), "r");
-		if (aux_data.fp == nullptr) {
-			vrb.warning("Cannot open BAM/CRAM file: [" + mpileup_data.bam_fnames[i] + "], " + std::to_string(n_retry_remain) + " retries remaining");
-			continue;
-		}
+	for ( int fname_index = 0 ; fname_index < fname_count ; fname_index++ ) {
 
-		if (hts_set_opt(aux_data.fp, CRAM_OPT_DECODE_MD, 0)) {
-			vrb.warning("Failed to set CRAM_OPT_DECODE_MD value, " + std::to_string(n_retry_remain) + " retries remaining");
-			continue;
-		}
-		if (!mpileup_data.fai_fname.empty()) {
-			if (hts_set_fai_filename(aux_data.fp, mpileup_data.fai_fname.c_str()) != 0)  {
-				vrb.warning("Failed to process fasta," + std::to_string(n_retry_remain) + " retries remaining");
+		vrb.bullet(" >>reading: " + fnames[fname_index]);
+
+		for (; n_retry_remain > 0;n_retry_remain--, delay*=2) {
+			if (n_retry_remain != n_retry) {
+				std::this_thread::sleep_for(delay);
+				clean();
+			}
+			caller.ploidy = mpileup_data.tar_ploidy[i];
+
+			auto&& aux_data = aux_datas[fname_index];
+			aux_data.fp = sam_open(fnames[fname_index].c_str(), "r");
+			if (aux_data.fp == nullptr) {
+				vrb.warning("Cannot open BAM/CRAM file: [" + fnames[fname_index] + "], " + std::to_string(n_retry_remain) + " retries remaining");
 				continue;
 			}
+
+			if (hts_set_opt(aux_data.fp, CRAM_OPT_DECODE_MD, 0)) {
+				vrb.warning("Failed to set CRAM_OPT_DECODE_MD value, " + std::to_string(n_retry_remain) + " retries remaining");
+				continue;
+			}
+			if (!mpileup_data.fai_fname.empty()) {
+				if (hts_set_fai_filename(aux_data.fp, mpileup_data.fai_fname.c_str()) != 0)  {
+					vrb.warning("Failed to process fasta," + std::to_string(n_retry_remain) + " retries remaining");
+					continue;
+				}
+			}
+
+			aux_data.hdr  = sam_hdr_read(aux_data.fp);
+			if ( !aux_data.hdr ) {
+				vrb.warning("Failed to read header: " + fnames[fname_index] + ". " + std::to_string(n_retry_remain) + " retries remaining");
+				continue;
+			}
+
+			aux_data.idx = sam_index_load(aux_data.fp, fnames[fname_index].c_str());
+			if (aux_data.idx == NULL) {
+				vrb.warning("Failed to load index for [" + fnames[fname_index] + "], " + std::to_string(n_retry_remain) + " retries remaining");
+				continue;
+			}
+
+			aux_data.iter = sam_itr_querys(aux_data.idx, aux_data.hdr, region.c_str());
+			if ( aux_data.iter==NULL  ) {
+				vrb.warning("Failed to load region: [" + region + "] for file: [" + fnames[fname_index] + "], " + std::to_string(n_retry_remain) + " retries remaining");
+				continue;
+			}
+			break;
 		}
 
-		aux_data.hdr  = sam_hdr_read(aux_data.fp);
-		if ( !aux_data.hdr ) {
-			vrb.warning("Failed to read header: " + mpileup_data.bam_fnames[i] + ". " + std::to_string(n_retry_remain) + " retries remaining");
-			continue;
+		if (n_retry_remain == 0) {
+			vrb.error("Max number of retries attempted.");
 		}
-
-		aux_data.idx = sam_index_load(aux_data.fp, mpileup_data.bam_fnames[i].c_str());
-		if (aux_data.idx == NULL) {
-			vrb.warning("Failed to load index for [" + mpileup_data.bam_fnames[i] + "], " + std::to_string(n_retry_remain) + " retries remaining");
-			continue;
-		}
-
-		aux_data.iter = sam_itr_querys(aux_data.idx, aux_data.hdr, region.c_str());
-		if ( aux_data.iter==NULL  ) {
-			vrb.warning("Failed to load region: [" + region + "] for file: [" + mpileup_data.bam_fnames[i] + "], " + std::to_string(n_retry_remain) + " retries remaining");
-			continue;
-		}
-
-		if (glimpse_mpileup_reg(i) < 0) {
-			vrb.warning("Failed to perform pileup calling for file: [" + mpileup_data.bam_fnames[i] + "], " + std::to_string(n_retry_remain) + " retries remaining");
-			reset_results(i);
-			continue;
-		}
-		break;
 
 	}
 
-	if (n_retry_remain == 0) {
-		vrb.error("Max number of retries attempted.");
+	if (glimpse_mpileup_reg(i) < 0) {
+		vrb.error("Failed to perform pileup calling");
 	}
+
 	clean();
 }
 
@@ -235,7 +321,7 @@ int genotype_bam_caller::glimpse_mpileup_reg(int i)
 	const int sample_ploidyP1 = mpileup_data.tar_ploidy[i]+1;
 
 	caller.n_plp = 0;
-	caller.s_plp = bam_plp_init(read_bam, (void*)&aux_data);
+	caller.s_plp = bam_plp_init(read_bam, (void*)&aux_datas);
 	unsigned long linecount = 0, prevstart = 0, prevend = 0;
 	const bam_pileup1_t * v_plp;
 
@@ -270,7 +356,6 @@ int genotype_bam_caller::glimpse_mpileup_reg(int i)
 			}
 			++G.stats.depth_count[i][caller.gls.dp_ind];
 			G.stats.cov_ind[i].push(caller.gls.dp_ind);
-
 			caller.snp_called = !is_indel;
 			++i_site;
 		}
@@ -639,3 +724,4 @@ void standard_errmod_indels_v(call_t& caller, const variant* variant)
 
     if (sploidy <= 1) caller.gls.llk[2] = -25.5f;
 }
+
