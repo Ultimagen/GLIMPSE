@@ -31,7 +31,7 @@ EXEFILE=bin/GLIMPSE2_$(NAME)_static
 #CXXFLAG+= -D__COMMIT_DATE__=\"$(COMMIT_DATE)\"
 
 ifeq ($(NAME),phase)
- CXXFLAG+=-mavx2 -mfma -mavx512f -march=native
+ CXXFLAG+=-mavx2 -mfma -mavx512f -march=${ARCH}
 endif
 
 COMMIT_VERS=3bed6d9
