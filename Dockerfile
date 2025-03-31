@@ -1,5 +1,7 @@
 FROM ubuntu:20.04
 
+ARG BUILD_ARCH=skylake-avx512
+
 LABEL org.opencontainers.image.created="2022-11-30"
 LABEL org.opencontainers.image.url="https://github.com/odelaneau/GLIMPSE"
 LABEL org.opencontainers.image.version="2.0.0"
@@ -53,13 +55,15 @@ RUN find GLIMPSE -name ".*.cpp" -delete
 # Download and build GLIMPSE
 RUN cd GLIMPSE && \
 make clean && \
-make -j COMPILATION_ENV=docker
+make -j COMPILATION_ENV=docker ARCH=${BUILD_ARCH}
 
-#RUN mv GLIMPSE/chunk/bin/GLIMPSE2_chunk GLIMPSE/split_reference/bin/GLIMPSE2_split_reference GLIMPSE/phase/bin/GLIMPSE2_phase GLIMPSE/ligate/bin/GLIMPSE2_ligate GLIMPSE/concordance/bin/GLIMPSE2_concordance /bin && \
-#chmod +x /bin/GLIMPSE2* && \
-#rm -rf GLIMPSE
-
-RUN mv GLIMPSE/phase/bin/GLIMPSE2_phase /bin && \
+RUN mv \
+    GLIMPSE/chunk/bin/GLIMPSE2_chunk \
+    GLIMPSE/split_reference/bin/GLIMPSE2_split_reference \
+    GLIMPSE/phase/bin/GLIMPSE2_phase \
+    GLIMPSE/ligate/bin/GLIMPSE2_ligate \
+    GLIMPSE/concordance/bin/GLIMPSE2_concordance \
+    /bin && \
 chmod +x /bin/GLIMPSE2* && \
 rm -rf GLIMPSE
 
